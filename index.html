@@ -1,0 +1,1695 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DRL Hierarchical Network — Live Visualization</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg:      #05050e;
+  --glass:   rgba(255,255,255,0.055);
+  --glass-b: rgba(255,255,255,0.09);
+  --glass-h: rgba(255,255,255,0.085);
+  --t1: rgba(255,255,255,0.92);
+  --t2: rgba(255,255,255,0.50);
+  --t3: rgba(255,255,255,0.25);
+  --col-base: #f97171;
+  --col-drl:  #5b9df0;
+  --col-gem:  #42d9a3;
+  --col-bs0:  #ffbe4d;
+  --col-bs1:  #b97dff;
+  --col-bs2:  #26d5f0;
+  --r: 16px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--t1);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 20px;
+  min-height: 100vh;
+}
+
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-b);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-radius: var(--r);
+}
+
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 22px; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;
+}
+header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; }
+header p  { font-size: 11px; color: var(--t2); margin-top: 3px; }
+
+.badges { display: flex; gap: 8px; flex-wrap: wrap; }
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 11px; background: var(--glass);
+  border: 1px solid var(--glass-b); border-radius: 100px;
+  font-size: 11px; color: var(--t2);
+}
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+.controls {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 14px; background: var(--glass);
+  border: 1px solid var(--glass-b); border-radius: 8px;
+  color: var(--t1); font-size: 12px; cursor: pointer;
+  transition: background 0.15s; outline: none; font-family: inherit;
+}
+.btn:hover { background: var(--glass-h); }
+.btn.active { border-color: var(--col-drl); color: var(--col-drl); }
+
+.slider-wrap { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; }
+input[type=range] {
+  flex: 1; height: 3px; accent-color: var(--col-drl);
+  background: var(--glass-b); border-radius: 2px; outline: none; cursor: pointer;
+}
+.time-lbl { font-size: 11px; color: var(--t2); min-width: 44px; font-variant-numeric: tabular-nums; }
+
+.ev-banner {
+  display: none; align-items: center; gap: 10px;
+  padding: 9px 16px; margin-bottom: 14px;
+  background: rgba(255,190,60,0.07);
+  border: 1px solid rgba(255,190,60,0.20);
+  border-radius: 10px; font-size: 12px; color: #ffbe4d;
+}
+
+.main-grid {
+  display: grid; grid-template-columns: 1fr 300px;
+  gap: 16px; margin-bottom: 16px;
+}
+.map-panel { overflow: hidden; }
+.map-panel canvas { width: 100%; display: block; }
+
+.panel-header {
+  padding: 12px 16px 9px; border-bottom: 1px solid var(--glass-b);
+  font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.6px; color: var(--t2);
+}
+
+.event-log { height: 300px; overflow-y: auto; padding: 4px 0; }
+.ev-item {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 7px 14px; border-bottom: 1px solid rgba(255,255,255,0.035);
+}
+.ev-item:hover { background: rgba(255,255,255,0.025); }
+.ev-t { font-size: 10px; color: var(--t3); min-width: 32px; padding-top: 2px; font-variant-numeric: tabular-nums; }
+.ev-ico {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; flex-shrink: 0;
+}
+.ev-name { font-size: 12px; color: var(--t1); }
+.ev-sub  { font-size: 10px; color: var(--t2); margin-top: 1px; }
+
+.metrics-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 16px; }
+.mc { padding: 14px 16px; }
+.mc-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--t2); margin-bottom: 8px; }
+.mc-vals { display: flex; flex-direction: column; gap: 5px; }
+.mc-row  { display: flex; align-items: center; justify-content: space-between; }
+.mc-name { font-size: 10px; color: var(--t2); display: flex; align-items: center; gap: 5px; }
+.mc-val  { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mc-unit { font-size: 9px; color: var(--t2); font-weight: 400; }
+
+.section-title {
+  font-size: 10px; color: var(--t2); text-transform: uppercase;
+  letter-spacing: 0.6px; margin-bottom: 12px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.legend { display: flex; gap: 14px; flex-wrap: wrap; }
+.li { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--t2); }
+.ll { width: 18px; height: 2px; border-radius: 1px; }
+
+.charts-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.charts-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 16px; }
+.chart-panel { padding: 16px; }
+.ct     { font-size: 11px; font-weight: 600; color: var(--t2); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px; }
+.ct-sub { font-size: 10px; color: var(--t3); margin-bottom: 12px; }
+.cw     { position: relative; height: 170px; }
+
+/* ── Mode intro cards ────────────────────────────────── */
+.mode-cards { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
+.mode-card  { padding: 18px 16px 16px; border-left: 3px solid; }
+.mode-card-name { font-size: 11px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.1px; }
+.mode-card-desc { font-size: 11px; color: var(--t2); line-height: 1.55; }
+.mode-card-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 12px; }
+.mode-tag { font-size: 9px; padding: 2px 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; color: var(--t3); }
+
+/* ── Section header blocks ───────────────────────────── */
+.sec-hdr { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+.sec-hdr-left { display: flex; flex-direction: column; gap: 3px; }
+.sec-num { font-size: 10px; font-weight: 700; color: var(--t3); text-transform: uppercase; letter-spacing: 0.8px; }
+.sec-name { font-size: 13px; font-weight: 600; color: var(--t1); letter-spacing: -0.2px; }
+.sec-desc { font-size: 11px; color: var(--t2); max-width: 520px; line-height: 1.5; margin-top: 1px; }
+
+/* ── Insight chips ───────────────────────────────────── */
+.insights { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+.ins-chip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  background: var(--glass); border: 1px solid var(--glass-b);
+  border-radius: 12px;
+}
+.ins-num  { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.ins-body { display: flex; flex-direction: column; gap: 1px; }
+.ins-lbl  { font-size: 11px; color: var(--t1); }
+.ins-sub  { font-size: 9px; color: var(--t3); }
+
+/* ── Map legend ──────────────────────────────────────── */
+.map-legend { padding: 10px 14px 12px; border-top: 1px solid var(--glass-b); }
+.map-leg-title { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--t3); margin-bottom: 9px; }
+.map-leg-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 10px; color: var(--t2); }
+.map-leg-row:last-child { margin-bottom: 0; }
+.map-leg-swatch { width: 22px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.map-leg-arrow { width: 22px; display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
+.map-leg-dash { flex: 1; height: 1px; border-top: 1.5px dashed var(--col-drl); }
+.map-leg-pt { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── Chart hint tag ──────────────────────────────────── */
+.chart-goal { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; color: var(--t3); padding: 2px 7px; border: 1px solid rgba(255,255,255,0.07); border-radius: 4px; float: right; margin-top: -2px; }
+
+.prb-tabs {
+  display: flex; gap: 4px; background: rgba(255,255,255,0.04);
+  border-radius: 9px; padding: 3px; margin-bottom: 14px;
+}
+.prb-tab  { padding: 4px 14px; border-radius: 7px; font-size: 11px; color: var(--t2); cursor: pointer; transition: all 0.15s; }
+.prb-tab.active { background: rgba(255,255,255,0.09); color: var(--t1); }
+
+/* ── Improvement redesign ────────────────────────────── */
+.imp-top { display: grid; grid-template-columns: 1fr 230px; gap: 14px; margin-bottom: 14px; }
+.imp-scores-panel { padding: 18px 16px; display: flex; flex-direction: column; }
+.imp-scores-title { font-size: 9px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--t2); margin-bottom: 4px; }
+.imp-scores-sub { font-size: 9px; color: var(--t3); margin-bottom: 18px; }
+.imp-sc-item { padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.imp-sc-item:last-child { border-bottom: none; padding-bottom: 0; }
+.imp-sc-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 7px; }
+.imp-sc-mode { font-size: 11px; color: var(--t2); display: flex; align-items: center; gap: 6px; }
+.imp-sc-num  { font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.imp-sc-bar  { height: 3px; background: rgba(255,255,255,0.07); border-radius: 2px; overflow: hidden; }
+.imp-sc-fill { height: 100%; border-radius: 2px; }
+.imp-sc-sub  { font-size: 9px; color: var(--t3); margin-top: 4px; }
+
+.delta-grid { display: grid; grid-template-columns: repeat(6,1fr); gap: 12px; margin-bottom: 16px; }
+.delta-card { padding: 14px 11px; border-top: 2px solid transparent; }
+.d-metric { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--t2); margin-bottom: 11px; }
+.d-unit   { font-size: 8px; color: var(--t3); margin-left: 2px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+.d-row    { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); gap: 3px; }
+.d-row:last-child { border-bottom: none; padding-bottom: 0; }
+.d-left   { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.d-mname  { font-size: 9px; color: var(--t3); }
+.d-right  { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.d-val    { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.d-badge  { font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; line-height: 1.5; white-space: nowrap; }
+.d-pos { color: #42d9a3; background: rgba(66,217,163,0.12); }
+.d-neg { color: #f97171; background: rgba(249,113,113,0.12); }
+.d-neu { color: var(--t3); font-size: 9px; font-weight: 400; background: transparent; padding: 0; }
+
+.sum-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 20px; }
+.sum-card { padding: 18px; }
+.sum-mode { font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--t2); margin-bottom: 14px; display: flex; align-items: center; gap: 7px; }
+.sum-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.stat { background: rgba(255,255,255,0.04); border-radius: 10px; padding: 10px 12px; }
+.stat-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--t3); margin-bottom: 4px; }
+.stat-val { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat-u   { font-size: 9px; color: var(--t2); font-weight: 400; }
+.stat-sub { font-size: 9px; color: var(--t2); margin-top: 2px; }
+
+/* ── Analysis modal ─────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 600;
+  background: rgba(3,3,10,0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity 0.22s ease, visibility 0.22s ease;
+}
+.modal-overlay.open {
+  opacity: 1; visibility: visible; pointer-events: all;
+}
+.modal-panel {
+  width: min(1180px, calc(100vw - 32px));
+  max-height: calc(100vh - 44px);
+  background: #080814;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 20px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  transform: translateY(28px) scale(0.985);
+  transition: transform 0.32s cubic-bezier(0.22,1,0.36,1);
+  box-shadow: 0 32px 80px rgba(0,0,0,0.55);
+}
+.modal-overlay.open .modal-panel {
+  transform: translateY(0) scale(1);
+}
+.modal-hdr {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.025);
+}
+.modal-hdr-title {
+  font-size: 13px; font-weight: 600; color: var(--t1); flex: 1;
+  letter-spacing: -0.2px;
+}
+.modal-hdr-tabs {
+  display: flex; gap: 3px; background: rgba(255,255,255,0.04);
+  border-radius: 9px; padding: 3px;
+}
+.modal-tab {
+  padding: 5px 16px; border-radius: 7px; font-size: 11px;
+  color: var(--t2); cursor: pointer;
+  transition: background 0.14s, color 0.14s;
+  white-space: nowrap;
+}
+.modal-tab.active {
+  background: rgba(255,255,255,0.09); color: var(--t1);
+}
+.modal-close {
+  width: 28px; height: 28px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--t2); font-size: 15px; cursor: pointer;
+  transition: background 0.14s, color 0.14s;
+  flex-shrink: 0; line-height: 1;
+}
+.modal-close:hover { background: rgba(255,255,255,0.10); color: var(--t1); }
+.modal-body {
+  overflow-y: auto; padding: 22px 22px 32px;
+  flex: 1; min-height: 0;
+}
+.modal-section { display: none; }
+.modal-section.active { display: block; }
+
+/* header analysis button */
+.btn-analysis {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 16px;
+  background: rgba(91,157,240,0.10);
+  border: 1px solid rgba(91,157,240,0.25);
+  border-radius: 9px;
+  color: var(--col-drl); font-size: 12px; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  font-family: inherit; outline: none; letter-spacing: 0.1px;
+}
+.btn-analysis:hover {
+  background: rgba(91,157,240,0.18);
+  border-color: rgba(91,157,240,0.42);
+}
+.btn-analysis svg { width: 13px; height: 13px; flex-shrink: 0; }
+
+/* ── Simulation clock ────────────────────────────────── */
+.sim-clock {
+  display: flex; align-items: center; gap: 0;
+  padding: 0; margin-bottom: 16px; overflow: hidden;
+}
+.clk-main {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 22px; flex-shrink: 0;
+}
+.clk-period-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  transition: background 1s ease;
+}
+.clk-hm {
+  font-size: 32px; font-weight: 700; letter-spacing: -1.5px;
+  font-variant-numeric: tabular-nums; line-height: 1;
+  transition: color 0.8s ease;
+}
+.clk-sec {
+  font-size: 14px; font-weight: 500; color: var(--t3);
+  font-variant-numeric: tabular-nums; align-self: flex-end;
+  margin-bottom: 3px; letter-spacing: 0;
+}
+.clk-sep {
+  width: 1px; background: var(--glass-b); align-self: stretch; margin: 0;
+}
+.clk-meta {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 20px; flex: 1; min-width: 0;
+}
+.clk-top {
+  display: flex; align-items: center; gap: 10px;
+}
+.clk-period-lbl {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--t2); transition: color 0.8s ease;
+}
+.clk-day-lbl {
+  font-size: 10px; color: var(--t3);
+  margin-left: auto; white-space: nowrap;
+}
+.clk-bar-row {
+  display: flex; align-items: center; gap: 10px;
+}
+.clk-bar {
+  flex: 1; height: 3px; background: rgba(255,255,255,0.07);
+  border-radius: 2px; overflow: hidden;
+}
+.clk-bar-fill {
+  height: 100%; border-radius: 2px;
+  background: var(--col-drl);
+  transition: width 0.15s linear;
+}
+.clk-step {
+  font-size: 10px; color: var(--t3);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  flex-shrink: 0;
+}
+.clk-pct {
+  font-size: 10px; color: var(--t2);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  flex-shrink: 0; min-width: 32px; text-align: right;
+}
+
+/* ── Splash screen ───────────────────────────────────── */
+#splash {
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  transition: opacity 0.6s ease, visibility 0.6s ease;
+}
+#splash.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+.splash-bg {
+  position: absolute; inset: 0; overflow: hidden;
+}
+.splash-ring {
+  position: absolute; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.055);
+}
+
+.splash-card {
+  position: relative; z-index: 1;
+  background: var(--glass);
+  border: 1px solid var(--glass-b);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border-radius: 24px;
+  padding: 52px 56px 44px;
+  max-width: 560px; width: calc(100% - 40px);
+  text-align: center;
+}
+
+.splash-eyebrow {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 4px 13px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 100px;
+  font-size: 10px; letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--t2); margin-bottom: 28px;
+}
+.splash-eyebrow-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--col-drl);
+  box-shadow: 0 0 6px var(--col-drl);
+}
+
+.splash-title {
+  font-size: 26px; font-weight: 700; letter-spacing: -0.5px;
+  line-height: 1.25; color: var(--t1); margin-bottom: 10px;
+}
+.splash-title span { color: var(--col-drl); }
+
+.splash-subtitle {
+  font-size: 13px; color: var(--t2); line-height: 1.6;
+  margin-bottom: 32px;
+}
+
+.splash-divider {
+  height: 1px; background: var(--glass-b); margin: 28px 0;
+}
+
+.splash-meta {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.splash-author-label {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.7px;
+  color: var(--t3);
+}
+.splash-author {
+  font-size: 16px; font-weight: 600; color: var(--t1); letter-spacing: -0.2px;
+}
+.splash-org {
+  font-size: 11px; color: var(--t2); margin-top: 2px;
+}
+
+.splash-tags {
+  display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
+  margin-top: 28px;
+}
+.splash-tag {
+  padding: 3px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 100px;
+  font-size: 10px; color: var(--t2);
+}
+
+.splash-btn {
+  margin-top: 36px;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 32px;
+  background: rgba(91,157,240,0.12);
+  border: 1px solid rgba(91,157,240,0.28);
+  border-radius: 12px;
+  font-size: 13px; font-weight: 500; color: var(--col-drl);
+  cursor: pointer; transition: background 0.18s, border-color 0.18s;
+  font-family: inherit; outline: none; letter-spacing: 0.1px;
+}
+.splash-btn:hover {
+  background: rgba(91,157,240,0.20);
+  border-color: rgba(91,157,240,0.45);
+}
+.splash-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--glass-b); border-radius: 2px; }
+
+@media (max-width: 1080px) {
+  .main-grid   { grid-template-columns: 1fr; }
+  .charts-2    { grid-template-columns: 1fr; }
+  .charts-3    { grid-template-columns: 1fr; }
+  .metrics-row { grid-template-columns: repeat(2,1fr); }
+  .sum-grid    { grid-template-columns: 1fr; }
+  .imp-top     { grid-template-columns: 1fr; }
+  .delta-grid  { grid-template-columns: repeat(3,1fr); }
+  .mode-cards  { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .delta-grid  { grid-template-columns: repeat(2,1fr); }
+  .insights    { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Splash screen ──────────────────────────────────── -->
+<div id="splash">
+  <div class="splash-bg" id="splashBg"></div>
+  <div class="splash-card">
+
+    <div class="splash-eyebrow">
+      <span class="splash-eyebrow-dot"></span>
+      Дипломна робота &middot; 2025
+    </div>
+
+    <div class="splash-title">
+      Оптимізація мережевих зрізів<br>
+      за допомогою <span>ієрархічного DRL</span>
+    </div>
+
+    <div class="splash-subtitle">
+      Ієрархічна мульти-агентна система на основі PPO для динамічного
+      розподілу ресурсів у мережах 5G NR з інтеграцією великих мовних моделей
+    </div>
+
+    <div class="splash-tags">
+      <span class="splash-tag">Deep Reinforcement Learning</span>
+      <span class="splash-tag">5G Network Slicing</span>
+      <span class="splash-tag">MARL · PPO</span>
+      <span class="splash-tag">eMBB / URLLC / mMTC</span>
+      <span class="splash-tag">Gemini API</span>
+    </div>
+
+    <div class="splash-divider"></div>
+
+    <div class="splash-meta">
+      <div class="splash-author-label">Автор роботи</div>
+      <div class="splash-author">Прізвище Ім'я Побатькові</div>
+      <div class="splash-org">Кафедра інформаційних технологій &middot; Група ХХ-00</div>
+    </div>
+
+    <button class="splash-btn" onclick="enterSite()">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+        <circle cx="8" cy="8" r="6.5"/>
+        <polyline points="6,5.5 10,8 6,10.5"/>
+      </svg>
+      Перейти до візуалізації
+    </button>
+
+  </div>
+</div>
+
+<header class="glass">
+  <div>
+    <h1>DRL Hierarchical Network Optimizer</h1>
+    <p>Ієрархічний MARL · 3 БС · PPO Координатор + 3 Локальних агенти · 5G NR Slicing · eMBB / URLLC / mMTC</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div class="badges">
+      <span class="badge"><span class="dot" style="background:var(--col-base)"></span>Без DRL</span>
+      <span class="badge"><span class="dot" style="background:var(--col-drl)"></span>DRL (PPO ієрархічний)</span>
+      <span class="badge"><span class="dot" style="background:var(--col-gem)"></span>DRL + Gemini (предиктивний)</span>
+    </div>
+    <button class="btn-analysis" onclick="openAnalysis()">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="1.5" y="9" width="3" height="5.5" rx="0.8"/>
+        <rect x="6.5" y="5.5" width="3" height="9" rx="0.8"/>
+        <rect x="11.5" y="2" width="3" height="12.5" rx="0.8"/>
+      </svg>
+      Детальний аналіз
+    </button>
+  </div>
+</header>
+
+<div class="mode-cards">
+  <div class="glass mode-card" style="border-left-color:var(--col-base)">
+    <div class="mode-card-name" style="color:var(--col-base)">&#9632;&nbsp; Без DRL &mdash; Базовий рівень</div>
+    <div class="mode-card-desc">Статичний розподіл PRB: <strong>33% eMBB / 33% URLLC / 34% mMTC</strong> на всіх БС незалежно від навантаження. Немає адаптації до трафіку та подій.</div>
+    <div class="mode-card-tags">
+      <span class="mode-tag">Статична алокація</span>
+      <span class="mode-tag">33 / 33 / 34</span>
+      <span class="mode-tag">Без хендоверів</span>
+    </div>
+  </div>
+  <div class="glass mode-card" style="border-left-color:var(--col-drl)">
+    <div class="mode-card-name" style="color:var(--col-drl)">&#9632;&nbsp; DRL (PPO) &mdash; Ієрархічний MARL</div>
+    <div class="mode-card-desc"><strong>Координатор</strong> балансує навантаження між БС через хендовери. <strong>3 локальних агенти</strong> динамічно адаптують PRB під поточний трафік кожної БС.</div>
+    <div class="mode-card-tags">
+      <span class="mode-tag">Координатор + 3 локальних</span>
+      <span class="mode-tag">Динамічна алокація</span>
+      <span class="mode-tag">Активні хендовери</span>
+    </div>
+  </div>
+  <div class="glass mode-card" style="border-left-color:var(--col-gem)">
+    <div class="mode-card-name" style="color:var(--col-gem)">&#9632;&nbsp; DRL + Gemini &mdash; Предиктивна оптимізація</div>
+    <div class="mode-card-desc">DRL-система з предиктивним <strong>lookahead 20 кроків</strong>: Gemini API аналізує майбутній трафік і завчасно виділяє ресурси <em>до</em> настання пікових подій.</div>
+    <div class="mode-card-tags">
+      <span class="mode-tag">Lookahead 20 кроків</span>
+      <span class="mode-tag">LLM-hints</span>
+      <span class="mode-tag">Проактивна алокація</span>
+    </div>
+  </div>
+</div>
+
+<div class="controls glass">
+  <button class="btn" id="playBtn" onclick="togglePlay()">&#9654; Старт</button>
+  <button class="btn" id="sbh"  onclick="setSpeed(0.5)">0.5x</button>
+  <button class="btn" id="sb1"  onclick="setSpeed(1)">1x</button>
+  <button class="btn" id="sb3"  onclick="setSpeed(3)">3x</button>
+  <button class="btn" id="sb8"  onclick="setSpeed(8)">8x</button>
+  <button class="btn" id="sb20" onclick="setSpeed(20)">20x</button>
+  <div class="slider-wrap">
+    <span style="font-size:10px;color:var(--t2)">Час</span>
+    <input type="range" id="tSlider" min="0" max="599" value="0" oninput="seekTo(+this.value)">
+    <span class="time-lbl" id="timeLbl">00:00</span>
+  </div>
+  <button class="btn" onclick="resetSim()">&#8635; Скинути</button>
+</div>
+
+<div class="sim-clock glass">
+  <div class="clk-main">
+    <span class="clk-period-dot" id="clkDot"></span>
+    <span class="clk-hm" id="clkHM">00:00</span>
+    <span class="clk-sec" id="clkSec">:00</span>
+  </div>
+  <div class="clk-sep"></div>
+  <div class="clk-meta">
+    <div class="clk-top">
+      <span class="clk-period-lbl" id="clkPeriod">Ніч</span>
+      <span class="clk-day-lbl" id="clkDay">День 1</span>
+    </div>
+    <div class="clk-bar-row">
+      <div class="clk-bar"><div class="clk-bar-fill" id="clkFill" style="width:0%"></div></div>
+      <span class="clk-step" id="clkStep">0 / 599</span>
+      <span class="clk-pct" id="clkPct">0%</span>
+    </div>
+  </div>
+</div>
+
+<div class="ev-banner" id="evBanner">
+  <span style="font-size:16px">&#9889;</span>
+  <span id="evBannerTxt"></span>
+</div>
+
+<div class="main-grid">
+  <div class="glass map-panel">
+    <div class="panel-header">Топологія мережі &middot; Зони покриття &middot; Трафік UE &middot; Хендовери</div>
+    <canvas id="netMap"></canvas>
+  </div>
+  <div class="glass" style="display:flex;flex-direction:column;min-height:0">
+    <div class="panel-header">Журнал подій</div>
+    <div class="event-log" id="evLog"></div>
+    <div class="map-legend">
+      <div class="map-leg-title">Легенда карти</div>
+      <div class="map-leg-row"><span class="map-leg-swatch" style="background:rgba(255,190,77,0.25);border:1px solid rgba(255,190,77,0.4)"></span>Зона покриття БС-0</div>
+      <div class="map-leg-row"><span class="map-leg-swatch" style="background:rgba(185,125,255,0.25);border:1px solid rgba(185,125,255,0.4)"></span>Зона покриття БС-1</div>
+      <div class="map-leg-row"><span class="map-leg-swatch" style="background:rgba(38,213,240,0.25);border:1px solid rgba(38,213,240,0.4)"></span>Зона покриття БС-2</div>
+      <div class="map-leg-row" style="margin-top:8px">
+        <span class="map-leg-pt" style="background:#ffbe4d"></span>
+        <span class="map-leg-pt" style="background:#b97dff;margin-left:2px"></span>
+        <span class="map-leg-pt" style="background:#26d5f0;margin-left:2px"></span>
+        &nbsp;UE (колір = обслуговуюча БС)
+      </div>
+      <div class="map-leg-row">
+        <div class="map-leg-arrow"><div class="map-leg-dash"></div></div>
+        Хендовер DRL (балансування)
+      </div>
+      <div class="map-leg-row">
+        <span style="width:22px;height:10px;border-radius:50%;border:1.5px solid rgba(255,190,60,0.6);display:inline-block;flex-shrink:0"></span>
+        Подійне кільце + додаткові UE
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="metrics-row" id="metricsRow"></div>
+
+<div class="sec-hdr">
+  <div class="sec-hdr-left">
+    <span class="sec-num">&#9312; Порівняльний аналіз</span>
+    <span class="sec-name">Динаміка метрик у часі &mdash; всі режими</span>
+    <span class="sec-desc">6 графіків демонструють поведінку мережі протягом 600 кроків симуляції (≈24 год). DRL активно реагує на пікове навантаження, Gemini передбачає його завчасно.</span>
+  </div>
+  <div class="legend">
+    <span class="li"><span class="ll" style="background:var(--col-base)"></span>Без DRL</span>
+    <span class="li"><span class="ll" style="background:var(--col-drl)"></span>DRL (PPO)</span>
+    <span class="li"><span class="ll" style="background:var(--col-gem)"></span>DRL + Gemini</span>
+  </div>
+</div>
+
+<div class="charts-2">
+  <div class="glass chart-panel">
+    <div class="ct">Завантаження мережі</div>
+    <div class="ct-sub">Середнє по 3 БС, %</div>
+    <div class="cw"><canvas id="cLoad"></canvas></div>
+  </div>
+  <div class="glass chart-panel">
+    <div class="ct">Дисперсія навантаження</div>
+    <div class="ct-sub">Рівномірність між БС (%&sup2;) &middot; менше = краще</div>
+    <div class="cw"><canvas id="cVar"></canvas></div>
+  </div>
+  <div class="glass chart-panel">
+    <div class="ct">Пропускна здатність eMBB</div>
+    <div class="ct-sub">Mbps &middot; більше = краще</div>
+    <div class="cw"><canvas id="cTput"></canvas></div>
+  </div>
+  <div class="glass chart-panel">
+    <div class="ct">Затримка eMBB</div>
+    <div class="ct-sub">мс &middot; ціль &lt; 100 мс</div>
+    <div class="cw"><canvas id="cEmbb"></canvas></div>
+  </div>
+  <div class="glass chart-panel">
+    <div class="ct">Затримка URLLC</div>
+    <div class="ct-sub">мс &middot; ціль &lt; 1.0 мс</div>
+    <div class="cw"><canvas id="cUrllc"></canvas></div>
+  </div>
+  <div class="glass chart-panel">
+    <div class="ct">Втрата пакетів</div>
+    <div class="ct-sub">% &middot; ціль &lt; 0.001%</div>
+    <div class="cw"><canvas id="cPloss"></canvas></div>
+  </div>
+</div>
+
+<div class="insights" id="insightsRow"></div>
+
+<!-- ── Analysis modal ──────────────────────────────────── -->
+<div id="analysisModal" class="modal-overlay" onclick="onOverlayClick(event)">
+  <div class="modal-panel">
+
+    <div class="modal-hdr">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--col-drl)" stroke-width="1.5" style="flex-shrink:0">
+        <rect x="1.5" y="9" width="3" height="5.5" rx="0.8"/>
+        <rect x="6.5" y="5.5" width="3" height="9" rx="0.8"/>
+        <rect x="11.5" y="2" width="3" height="12.5" rx="0.8"/>
+      </svg>
+      <span class="modal-hdr-title">Детальний аналіз</span>
+      <div class="modal-hdr-tabs" id="modalTabs">
+        <span class="modal-tab active" onclick="switchTab('prb',this)">&#9313; PRB Slicing</span>
+        <span class="modal-tab" onclick="switchTab('imp',this)">&#9314; Ефективність</span>
+        <span class="modal-tab" onclick="switchTab('sum',this)">&#9315; Підсумок</span>
+      </div>
+      <button class="modal-close" onclick="closeAnalysis()" title="Закрити">&times;</button>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- ② PRB Slicing -->
+      <div class="modal-section active" id="msec-prb">
+        <div class="sec-hdr">
+          <div class="sec-hdr-left">
+            <span class="sec-num">&#9313; PRB Slicing</span>
+            <span class="sec-name">Розподіл ресурсних блоків по зрізах</span>
+            <span class="sec-desc">Частки PRB для eMBB / URLLC / mMTC кожної БС. DRL динамічно зміщує баланс під навантаження — пікові події збільшують частку eMBB.</span>
+          </div>
+          <div class="legend">
+            <span class="li"><span class="ll" style="background:#5b9df0"></span>eMBB</span>
+            <span class="li"><span class="ll" style="background:#f07ea3"></span>URLLC</span>
+            <span class="li"><span class="ll" style="background:#57e87d"></span>mMTC</span>
+          </div>
+        </div>
+        <div class="prb-tabs" id="prbTabs">
+          <span class="prb-tab active" onclick="setPrbMode('base',this)">Без DRL</span>
+          <span class="prb-tab" onclick="setPrbMode('drl',this)">DRL (PPO)</span>
+          <span class="prb-tab" onclick="setPrbMode('gem',this)">DRL + Gemini</span>
+        </div>
+        <div class="charts-3">
+          <div class="glass chart-panel">
+            <div class="ct">БС-0 &middot; PRB Allocation</div>
+            <div class="cw"><canvas id="cPrb0"></canvas></div>
+          </div>
+          <div class="glass chart-panel">
+            <div class="ct">БС-1 &middot; PRB Allocation</div>
+            <div class="cw"><canvas id="cPrb1"></canvas></div>
+          </div>
+          <div class="glass chart-panel">
+            <div class="ct">БС-2 &middot; PRB Allocation</div>
+            <div class="cw"><canvas id="cPrb2"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ③ Improvement -->
+      <div class="modal-section" id="msec-imp">
+        <div class="sec-hdr">
+          <div class="sec-hdr-left">
+            <span class="sec-num">&#9314; Порівняльна ефективність</span>
+            <span class="sec-name">Відносне покращення метрик</span>
+            <span class="sec-desc">Радарна діаграма нормує 6 метрик до шкали 0–100 (більше = краще). Дельта-карти показують відсотковий приріст між режимами по кожному показнику.</span>
+          </div>
+        </div>
+        <div class="imp-top">
+          <div class="glass chart-panel">
+            <div class="ct">Порівняльна ефективність</div>
+            <div class="ct-sub">Нормована шкала 0–100 &middot; більше = краще для всіх осей</div>
+            <div style="position:relative;height:290px"><canvas id="cRadar"></canvas></div>
+          </div>
+          <div class="glass imp-scores-panel">
+            <div class="imp-scores-title">Загальний бал</div>
+            <div class="imp-scores-sub">Середнє по 6 метриках / 100</div>
+            <div id="impScores"></div>
+          </div>
+        </div>
+        <div class="delta-grid" id="deltaGrid"></div>
+      </div>
+
+      <!-- ④ Summary -->
+      <div class="modal-section" id="msec-sum">
+        <div class="sec-hdr">
+          <div class="sec-hdr-left">
+            <span class="sec-num">&#9315; Підсумок</span>
+            <span class="sec-name">Статистика за повний сеанс 600 кроків</span>
+            <span class="sec-desc">Усереднені показники за весь цикл симуляції з урахуванням усіх 5 подій та добового патерну трафіку.</span>
+          </div>
+        </div>
+        <div class="sum-grid">
+          <div class="glass sum-card">
+            <div class="sum-mode"><span class="dot" style="background:var(--col-base);width:8px;height:8px"></span>Без DRL &mdash; статична алокація PRB</div>
+            <div class="sum-stats" id="sBase"></div>
+          </div>
+          <div class="glass sum-card">
+            <div class="sum-mode"><span class="dot" style="background:var(--col-drl);width:8px;height:8px"></span>DRL (PPO) &mdash; ієрархічний MARL</div>
+            <div class="sum-stats" id="sDrl"></div>
+          </div>
+          <div class="glass sum-card">
+            <div class="sum-mode"><span class="dot" style="background:var(--col-gem);width:8px;height:8px"></span>DRL + Gemini &mdash; предиктивна оптимізація</div>
+            <div class="sum-stats" id="sGem"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /modal-body -->
+  </div><!-- /modal-panel -->
+</div><!-- /modal-overlay -->
+
+<script>
+// ═══════════════════════════════════════════════════════
+// DATA GENERATION
+// ═══════════════════════════════════════════════════════
+const T = 600, N_BS = 3;
+const BS_POS   = [[0.20,0.50],[0.50,0.50],[0.80,0.50]];
+const BS_NAMES = ['BS-0','BS-1','BS-2'];
+const C_BS     = ['#ffbe4d','#b97dff','#26d5f0'];
+const C_BASE='#f97171', C_DRL='#5b9df0', C_GEM='#42d9a3';
+
+const EVENTS = [
+  {t:80,  dur:70,  bs:[1],   name:'Концерт',           icon:'C', col:'#b97dff', boost:0.38},
+  {t:190, dur:80,  bs:[0,1,2],name:'Ранкова год. пік', icon:'R', col:'#ffbe4d', boost:0.22},
+  {t:295, dur:55,  bs:[2],   name:'Флешмоб',           icon:'F', col:'#26d5f0', boost:0.42},
+  {t:385, dur:75,  bs:[0],   name:'Матч стадіон',      icon:'M', col:'#ffbe4d', boost:0.40},
+  {t:495, dur:60,  bs:[1,2], name:'Вечірній пік',      icon:'V', col:'#f07ea3', boost:0.28},
+];
+
+let _s = 42;
+function rng(){ _s=(_s*1664525+1013904223)>>>0; return _s/4294967295; }
+
+function evBoost(t,bs){
+  let b=0;
+  for(const e of EVENTS){
+    if(!e.bs.includes(bs)||t<e.t||t>=e.t+e.dur) continue;
+    const p=(t-e.t)/e.dur;
+    b+=e.boost*Math.exp(-6*(p-0.35)**2);
+  }
+  return b;
+}
+function rawLoad(t,bs){
+  const h=(t/25)%24;
+  return Math.max(0.1,Math.min(0.98,
+    0.3+0.38*Math.sin(Math.PI*h/12)+[0.02,0,-0.02][bs]+(rng()-0.5)*0.06));
+}
+function calcMet(load,prb){
+  const eu=load/(prb[0]+1e-6);
+  const tput=prb[0]*200*(1-Math.max(0,Math.min(1,eu-1)));
+  const lEmbb=10+90*Math.max(0,Math.min(1,eu-0.8))*5;
+  const uu=(load*0.15)/(prb[1]+1e-6);
+  const lUrl=0.3+0.7*Math.max(0,Math.min(1,uu-0.9))*10;
+  const pl=Math.max(0,(uu-1.0)*0.01);
+  return {tput,lEmbb,lUrl,pl};
+}
+function cl(l){return Math.max(0.05,Math.min(0.99,l));}
+
+function genAll(){
+  _s=42;
+  const base={loads:[],prbs:[],mets:[]};
+  const drl ={loads:[],prbs:[],mets:[]};
+  const gem ={loads:[],prbs:[],mets:[]};
+  const dLd=[0.3,0.3,0.3], gLd=[0.3,0.3,0.3];
+
+  for(let t=0;t<T;t++){
+    const raw=[0,1,2].map(i=>cl(rawLoad(t,i)+evBoost(t,i)));
+    const avg=raw.reduce((a,b)=>a+b,0)/N_BS;
+
+    // BASELINE
+    const bPrb=[[0.33,0.33,0.34],[0.33,0.33,0.34],[0.33,0.33,0.34]];
+    base.loads.push([...raw]);
+    base.prbs.push(bPrb);
+    base.mets.push(raw.map((l,i)=>calcMet(l,bPrb[i])));
+
+    // DRL
+    for(let i=0;i<N_BS;i++){
+      const ho=Math.max(0,raw[i]-avg)*0.35;
+      dLd[i]=cl(raw[i]-ho+(rng()-0.5)*0.03);
+    }
+    const dPrb=dLd.map(l=>{
+      const e=Math.min(0.60,0.30+l*0.35), u=Math.min(0.22,0.12+l*0.08);
+      return [e,u,Math.max(0.05,1-e-u)];
+    });
+    drl.loads.push([...dLd]);
+    drl.prbs.push(dPrb);
+    drl.mets.push(dLd.map((l,i)=>calcMet(l,dPrb[i])));
+
+    // DRL + GEMINI (lookahead 20)
+    const futB=[0,1,2].map(i=>{
+      let mx=0;
+      for(let d=0;d<20;d++) mx=Math.max(mx,evBoost(t+d,i));
+      return mx;
+    });
+    for(let i=0;i<N_BS;i++){
+      const ant=raw[i]+futB[i]*0.55;
+      const ho=Math.max(0,ant-avg)*0.48;
+      gLd[i]=cl(raw[i]-ho*1.1+(rng()-0.5)*0.018);
+    }
+    const gPrb=gLd.map((l,i)=>{
+      const pred=l+futB[i]*0.45;
+      const e=Math.min(0.62,0.32+pred*0.30), u=Math.min(0.24,0.12+pred*0.09);
+      return [e,u,Math.max(0.05,1-e-u)];
+    });
+    gem.loads.push([...gLd]);
+    gem.prbs.push(gPrb);
+    gem.mets.push(gLd.map((l,i)=>calcMet(l,gPrb[i])));
+  }
+  return {base,drl,gem};
+}
+
+const D=genAll();
+
+function avgBS(arr){ return arr.map(r=>r.reduce((a,b)=>a+b,0)/N_BS); }
+function varBS(arr){ return arr.map(r=>{ const m=r.reduce((a,b)=>a+b,0)/N_BS; return r.reduce((a,b)=>a+(b-m)**2,0)/N_BS; }); }
+function pickM(md,k){ return md.mets.map(r=>r.reduce((a,b)=>a+b[k],0)/N_BS); }
+function mean(a){ return a.reduce((s,v)=>s+v,0)/a.length; }
+function hhMM(t){ const h=Math.floor(t/25)%24,m=Math.floor((t%25)*2.4); return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'); }
+
+const PERIODS=[
+  {range:[0,5],  lbl:'Ніч',    dot:'#3a4a7a', hue:'#6b82c4'},
+  {range:[6,7],  lbl:'Схід',   dot:'#e8834a', hue:'#e8a06a'},
+  {range:[8,11], lbl:'Ранок',  dot:'#f5c842', hue:'#f5d870'},
+  {range:[12,16],lbl:'День',   dot:'#f5e042', hue:'#ffffff'},
+  {range:[17,19],lbl:'Вечір',  dot:'#e8834a', hue:'#e8a06a'},
+  {range:[20,23],lbl:'Ніч',    dot:'#3a4a7a', hue:'#6b82c4'},
+];
+function getPeriod(h){
+  return PERIODS.find(p=>h>=p.range[0]&&h<=p.range[1])||PERIODS[0];
+}
+
+function updateClock(t){
+  const h=Math.floor(t/25)%24;
+  const mFrac=(t%25)*2.4;
+  const m=Math.floor(mFrac);
+  const s=Math.floor((mFrac-m)*60);
+  const dayNum=Math.floor(t/(25*24))+1;
+  const pct=t/(T-1)*100;
+  const period=getPeriod(h);
+
+  document.getElementById('clkHM').textContent   = String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  document.getElementById('clkSec').textContent  = ':'+String(s).padStart(2,'0');
+  document.getElementById('clkHM').style.color   = period.hue;
+  document.getElementById('clkDot').style.background = period.dot;
+  document.getElementById('clkDot').style.boxShadow  = `0 0 6px ${period.dot}`;
+  document.getElementById('clkPeriod').textContent   = period.lbl;
+  document.getElementById('clkPeriod').style.color   = period.dot;
+  document.getElementById('clkDay').textContent  = 'День\u00a0'+dayNum;
+  document.getElementById('clkFill').style.width = pct.toFixed(2)+'%';
+  document.getElementById('clkStep').textContent = t+'\u00a0/\u00a0'+(T-1);
+  document.getElementById('clkPct').textContent  = pct.toFixed(1)+'%';
+}
+
+const NP=150;
+function sub(arr){ return Array.from({length:NP},(_,i)=>arr[Math.floor(i*T/NP)]); }
+const XLBL=Array.from({length:NP},(_,i)=>hhMM(Math.floor(i*T/NP)));
+
+// ═══════════════════════════════════════════════════════
+// CHART.JS
+// ═══════════════════════════════════════════════════════
+Chart.defaults.color='rgba(255,255,255,0.40)';
+Chart.defaults.borderColor='rgba(255,255,255,0.06)';
+Chart.defaults.font.family="-apple-system,BlinkMacSystemFont,'Inter',sans-serif";
+Chart.defaults.font.size=10;
+
+const TIP={
+  backgroundColor:'rgba(8,8,18,0.90)',
+  borderColor:'rgba(255,255,255,0.10)',
+  borderWidth:1, titleFont:{size:10}, bodyFont:{size:10},
+  padding:8, mode:'index', intersect:false,
+};
+const SC={
+  x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{maxTicksLimit:8,maxRotation:0}},
+  y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{maxTicksLimit:5}},
+};
+
+function mkChart(id,datasets,yMax){
+  return new Chart(document.getElementById(id).getContext('2d'),{
+    type:'line', data:{labels:XLBL,datasets},
+    options:{
+      animation:false, responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:TIP},
+      scales: yMax!=null?{x:SC.x,y:{...SC.y,max:yMax}}:{x:SC.x,y:SC.y},
+    },
+  });
+}
+
+function ds(label,data,color){
+  return {label,data:sub(data).map(v=>+v.toFixed(3)),
+    borderColor:color,borderWidth:1.5,pointRadius:0,tension:0.4,fill:false};
+}
+
+mkChart('cLoad',[
+  ds('Без DRL',  avgBS(D.base.loads).map(v=>+(v*100).toFixed(1)),C_BASE),
+  ds('DRL',      avgBS(D.drl.loads) .map(v=>+(v*100).toFixed(1)),C_DRL),
+  ds('DRL+Gem',  avgBS(D.gem.loads) .map(v=>+(v*100).toFixed(1)),C_GEM),
+],100);
+
+mkChart('cVar',[
+  ds('Без DRL',  varBS(D.base.loads).map(v=>+(v*1e4).toFixed(2)),C_BASE),
+  ds('DRL',      varBS(D.drl.loads) .map(v=>+(v*1e4).toFixed(2)),C_DRL),
+  ds('DRL+Gem',  varBS(D.gem.loads) .map(v=>+(v*1e4).toFixed(2)),C_GEM),
+]);
+
+mkChart('cTput',[
+  ds('Без DRL',  pickM(D.base,'tput'),C_BASE),
+  ds('DRL',      pickM(D.drl, 'tput'),C_DRL),
+  ds('DRL+Gem',  pickM(D.gem, 'tput'),C_GEM),
+],200);
+
+mkChart('cEmbb',[
+  ds('Без DRL',  pickM(D.base,'lEmbb'),C_BASE),
+  ds('DRL',      pickM(D.drl, 'lEmbb'),C_DRL),
+  ds('DRL+Gem',  pickM(D.gem, 'lEmbb'),C_GEM),
+]);
+
+mkChart('cUrllc',[
+  ds('Без DRL',  pickM(D.base,'lUrl'),C_BASE),
+  ds('DRL',      pickM(D.drl, 'lUrl'),C_DRL),
+  ds('DRL+Gem',  pickM(D.gem, 'lUrl'),C_GEM),
+]);
+
+mkChart('cPloss',[
+  ds('Без DRL',  pickM(D.base,'pl').map(v=>+(v*100).toFixed(5)),C_BASE),
+  ds('DRL',      pickM(D.drl, 'pl').map(v=>+(v*100).toFixed(5)),C_DRL),
+  ds('DRL+Gem',  pickM(D.gem, 'pl').map(v=>+(v*100).toFixed(5)),C_GEM),
+]);
+
+// PRB charts
+let prbC=[null,null,null];
+
+function mkPrb(id,bsId,mode){
+  const md=D[mode];
+  const e=sub(md.prbs.map(s=>+(s[bsId][0]*100).toFixed(1)));
+  const u=sub(md.prbs.map(s=>+(s[bsId][1]*100).toFixed(1)));
+  const m=sub(md.prbs.map(s=>+(s[bsId][2]*100).toFixed(1)));
+  return new Chart(document.getElementById(id).getContext('2d'),{
+    type:'line',
+    data:{labels:XLBL,datasets:[
+      {label:'eMBB', data:e,borderColor:'#5b9df0',borderWidth:1.5,pointRadius:0,tension:0.4,fill:true,backgroundColor:'rgba(91,157,240,0.07)'},
+      {label:'URLLC',data:u,borderColor:'#f07ea3',borderWidth:1.5,pointRadius:0,tension:0.4,fill:true,backgroundColor:'rgba(240,126,163,0.07)'},
+      {label:'mMTC', data:m,borderColor:'#57e87d',borderWidth:1.5,pointRadius:0,tension:0.4,fill:true,backgroundColor:'rgba(87,232,125,0.07)'},
+    ]},
+    options:{
+      animation:false,responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:true,position:'top',labels:{boxWidth:10,padding:8,font:{size:9}}},
+        tooltip:{...TIP,callbacks:{label:c=>`${c.dataset.label}: ${c.raw.toFixed(1)}%`}},
+      },
+      scales:{
+        x:{...SC.x,ticks:{maxTicksLimit:6,maxRotation:0}},
+        y:{...SC.y,min:0,max:100,ticks:{maxTicksLimit:5,callback:v=>v+'%'}},
+      },
+    },
+  });
+}
+prbC[0]=mkPrb('cPrb0',0,'base');
+prbC[1]=mkPrb('cPrb1',1,'base');
+prbC[2]=mkPrb('cPrb2',2,'base');
+
+function setPrbMode(m,el){
+  document.querySelectorAll('.prb-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  prbC.forEach(c=>c.destroy());
+  prbC[0]=mkPrb('cPrb0',0,m);
+  prbC[1]=mkPrb('cPrb1',1,m);
+  prbC[2]=mkPrb('cPrb2',2,m);
+}
+
+// ═══════════════════════════════════════════════════════
+// SUMMARY
+// ═══════════════════════════════════════════════════════
+function buildSum(mode,elId,color){
+  const md=D[mode];
+  const al=mean(avgBS(md.loads))*100;
+  const av=mean(varBS(md.loads))*1e4;
+  const at=mean(pickM(md,'tput'));
+  const ae=mean(pickM(md,'lEmbb'));
+  const au=mean(pickM(md,'lUrl'));
+  const xp=Math.max(...pickM(md,'pl'))*100;
+  const sv=pickM(md,'lEmbb').filter(v=>v>100).length;
+  document.getElementById(elId).innerHTML=`
+    <div class="stat"><div class="stat-lbl">Сер. завантаження</div>
+      <div class="stat-val" style="color:${color}">${al.toFixed(1)}<span class="stat-u">%</span></div></div>
+    <div class="stat"><div class="stat-lbl">Дисперсія</div>
+      <div class="stat-val" style="color:${color}">${av.toFixed(2)}<span class="stat-u">x10⁻⁴</span></div></div>
+    <div class="stat"><div class="stat-lbl">Пропускна здатність</div>
+      <div class="stat-val" style="color:${color}">${at.toFixed(0)}<span class="stat-u"> Mbps</span></div></div>
+    <div class="stat"><div class="stat-lbl">eMBB затримка</div>
+      <div class="stat-val" style="color:${color}">${ae.toFixed(1)}<span class="stat-u"> мс</span></div></div>
+    <div class="stat"><div class="stat-lbl">URLLC затримка</div>
+      <div class="stat-val" style="color:${color}">${au.toFixed(2)}<span class="stat-u"> мс</span></div></div>
+    <div class="stat"><div class="stat-lbl">SLA-порушення</div>
+      <div class="stat-val" style="color:${color}">${sv}<span class="stat-u"> кроків</span></div>
+      <div class="stat-sub">eMBB &gt; 100 мс</div></div>`;
+}
+buildSum('base','sBase',C_BASE);
+buildSum('drl', 'sDrl', C_DRL);
+buildSum('gem', 'sGem', C_GEM);
+
+// ── Improvement visualization ─────────────────────────
+
+// Normalize each metric to 0-100 performance score (higher = better)
+function computeScores(mode){
+  const md=D[mode];
+  const al=mean(avgBS(md.loads));
+  const av=mean(varBS(md.loads));
+  const at=mean(pickM(md,'tput'));
+  const ae=mean(pickM(md,'lEmbb'));
+  const au=mean(pickM(md,'lUrl'));
+  const ap=mean(pickM(md,'pl'));
+  return [
+    Math.max(0,Math.min(100,(1-al)*100)),
+    Math.max(0,Math.min(100,Math.max(0,0.025-av)/0.025*100)),
+    Math.max(0,Math.min(100,at/200*100)),
+    Math.max(0,Math.min(100,(100-ae)/90*100)),
+    Math.max(0,Math.min(100,Math.max(0,5-au)/5*100)),
+    Math.max(0,Math.min(100,Math.max(0,0.003-ap)/0.003*100)),
+  ];
+}
+
+const SC_BASE=computeScores('base'), SC_DRL=computeScores('drl'), SC_GEM=computeScores('gem');
+
+// ── Radar chart ───────────────────────────────────────
+new Chart(document.getElementById('cRadar').getContext('2d'),{
+  type:'radar',
+  data:{
+    labels:['Завантаж.','Рівномірн.','Throughput','eMBB Lat.','URLLC Lat.','Pkt Loss'],
+    datasets:[
+      {label:'Без DRL',   data:SC_BASE.map(v=>+v.toFixed(1)),
+        borderColor:C_BASE, backgroundColor:'rgba(249,113,113,0.07)',
+        borderWidth:1.5, pointRadius:3, pointBackgroundColor:C_BASE, pointBorderColor:'transparent'},
+      {label:'DRL (PPO)', data:SC_DRL.map(v=>+v.toFixed(1)),
+        borderColor:C_DRL,  backgroundColor:'rgba(91,157,240,0.09)',
+        borderWidth:1.5, pointRadius:3, pointBackgroundColor:C_DRL,  pointBorderColor:'transparent'},
+      {label:'DRL + Gemini', data:SC_GEM.map(v=>+v.toFixed(1)),
+        borderColor:C_GEM,  backgroundColor:'rgba(66,217,163,0.09)',
+        borderWidth:1.5, pointRadius:3, pointBackgroundColor:C_GEM,  pointBorderColor:'transparent'},
+    ]
+  },
+  options:{
+    animation:{duration:700},
+    responsive:true, maintainAspectRatio:false,
+    plugins:{
+      legend:{display:true, position:'bottom',
+        labels:{color:'rgba(255,255,255,0.50)', boxWidth:12, padding:14, font:{size:10}}},
+      tooltip:{...TIP},
+    },
+    scales:{r:{
+      min:0, max:100,
+      grid:{color:'rgba(255,255,255,0.07)'},
+      angleLines:{color:'rgba(255,255,255,0.07)'},
+      pointLabels:{color:'rgba(255,255,255,0.45)',
+        font:{size:10, family:"-apple-system,BlinkMacSystemFont,'Inter',sans-serif"}},
+      ticks:{display:false, stepSize:25},
+    }}
+  }
+});
+
+// ── Overall score cards ───────────────────────────────
+document.getElementById('impScores').innerHTML=
+  [{mode:'base',name:'Без DRL',   color:C_BASE},
+   {mode:'drl', name:'DRL (PPO)', color:C_DRL},
+   {mode:'gem', name:'DRL+Gemini',color:C_GEM}]
+  .map(({mode,name,color})=>{
+    const sc=computeScores(mode), avg=Math.round(mean(sc));
+    const best=mode==='gem'?' &nbsp;<span style="font-size:9px;color:var(--t3)">&#9733; найкращий</span>':'';
+    return `<div class="imp-sc-item">
+      <div class="imp-sc-head">
+        <span class="imp-sc-mode"><span class="dot" style="background:${color}"></span>${name}${best}</span>
+        <span class="imp-sc-num" style="color:${color}">${avg}</span>
+      </div>
+      <div class="imp-sc-bar"><div class="imp-sc-fill" style="width:${avg}%;background:${color}"></div></div>
+    </div>`;
+  }).join('');
+
+// ── Delta metric cards ────────────────────────────────
+const ABS_V={};
+['base','drl','gem'].forEach(m=>{
+  ABS_V[m]={
+    load:mean(avgBS(D[m].loads)), var:mean(varBS(D[m].loads)),
+    tput:mean(pickM(D[m],'tput')), lEmbb:mean(pickM(D[m],'lEmbb')),
+    lUrl:mean(pickM(D[m],'lUrl')), pl:mean(pickM(D[m],'pl')),
+  };
+});
+
+const DELTA_DEFS=[
+  {k:'load', lbl:'Завантаж.',  unit:'%',      fmt:v=>(v*100).toFixed(1), hi:false, acc:'#f97171'},
+  {k:'var',  lbl:'Дисперсія',  unit:'\xd710\u207b\u2074', fmt:v=>(v*1e4).toFixed(2), hi:false, acc:'#5b9df0'},
+  {k:'tput', lbl:'Throughput', unit:'Mbps',   fmt:v=>v.toFixed(0),       hi:true,  acc:'#42d9a3'},
+  {k:'lEmbb',lbl:'eMBB Lat.',  unit:'ms',     fmt:v=>v.toFixed(1),       hi:false, acc:'#5b9df0'},
+  {k:'lUrl', lbl:'URLLC Lat.', unit:'ms',     fmt:v=>v.toFixed(2),       hi:false, acc:'#5b9df0'},
+  {k:'pl',   lbl:'Pkt Loss',   unit:'\xd710\u207b\u2075', fmt:v=>(v*1e5).toFixed(1), hi:false, acc:'#42d9a3'},
+];
+
+function pctChg(from,to,hi){
+  if(!from) return 0;
+  const d=(to-from)/Math.abs(from)*100;
+  return hi?d:-d;
+}
+function mkBadge(p){
+  if(Math.abs(p)<0.05) return `<span class="d-badge d-neu">\u2014</span>`;
+  const cls=p>0?'d-pos':'d-neg', arr=p>0?'\u2191':'\u2193', sign=p>0?'+':'';
+  return `<span class="d-badge ${cls}">${arr}\u00a0${sign}${p.toFixed(1)}%</span>`;
+}
+
+document.getElementById('deltaGrid').innerHTML=DELTA_DEFS.map(m=>{
+  const vb=ABS_V.base[m.k], vd=ABS_V.drl[m.k], vg=ABS_V.gem[m.k];
+  const pDrl=pctChg(vb,vd,m.hi), pGem=pctChg(vd,vg,m.hi);
+  const dot=c=>`<span class="dot" style="background:${c};width:6px;height:6px;flex-shrink:0"></span>`;
+  return `<div class="glass delta-card" style="border-top:2px solid ${m.acc}33">
+    <div class="d-metric">${m.lbl}<span class="d-unit">${m.unit}</span></div>
+    <div class="d-row">
+      <div class="d-left">${dot(C_BASE)}<span class="d-mname">Base</span></div>
+      <div class="d-right">
+        <span class="d-val" style="color:${C_BASE}">${m.fmt(vb)}</span>
+        <span class="d-badge d-neu">базис</span>
+      </div>
+    </div>
+    <div class="d-row">
+      <div class="d-left">${dot(C_DRL)}<span class="d-mname">DRL</span></div>
+      <div class="d-right">
+        <span class="d-val" style="color:${C_DRL}">${m.fmt(vd)}</span>
+        ${mkBadge(pDrl)}
+      </div>
+    </div>
+    <div class="d-row">
+      <div class="d-left">${dot(C_GEM)}<span class="d-mname">Gem</span></div>
+      <div class="d-right">
+        <span class="d-val" style="color:${C_GEM}">${m.fmt(vg)}</span>
+        ${mkBadge(pGem)}
+      </div>
+    </div>
+  </div>`;
+}).join('');
+
+// ── Insight chips (uses ABS_V defined above) ──────────
+(function renderInsights(){
+  const bv=ABS_V.base, dv=ABS_V.drl, gv=ABS_V.gem;
+  const loadRedGem  = (bv.load - gv.load) / bv.load * 100;
+  const varRedGem   = (bv.var  - gv.var ) / bv.var  * 100;
+  const tputGainGem = (gv.tput - bv.tput) / bv.tput * 100;
+  const urllcRedGem = (bv.lUrl - gv.lUrl) / bv.lUrl * 100;
+  const slaB = pickM(D.base,'lEmbb').filter(v=>v>100).length;
+  const slaG = pickM(D.gem, 'lEmbb').filter(v=>v>100).length;
+  const slaRed = slaB > 0 ? (slaB - slaG) / slaB * 100 : 100;
+
+  const fmt = (v, up) => (up ? (v>=0?'\u2191':'\u2193') : (v>=0?'\u2193':'\u2191')) + Math.abs(v).toFixed(1) + '%';
+  const chips = [
+    { num: fmt(loadRedGem,  false), lbl:'Середнє завантаження', sub:'DRL+Gemini vs Без DRL',   col:C_GEM },
+    { num: fmt(varRedGem,   false), lbl:'Дисперсія між БС',     sub:'рівномірність розподілу', col:C_DRL },
+    { num: fmt(tputGainGem, true),  lbl:'Throughput eMBB',      sub:'DRL+Gemini vs Без DRL',   col:C_GEM },
+    { num: (slaRed>=0?'\u2193':'\u2191')+Math.abs(slaRed).toFixed(0)+'%',
+                                    lbl:'SLA-порушень',          sub:'eMBB > 100 мс (кроків)',  col:C_DRL },
+    { num: fmt(urllcRedGem, false), lbl:'URLLC затримка',       sub:'DRL+Gemini vs Без DRL',   col:C_GEM },
+  ];
+
+  document.getElementById('insightsRow').innerHTML = chips.map(c =>
+    `<div class="ins-chip">
+      <span class="ins-num" style="color:${c.col}">${c.num}</span>
+      <div class="ins-body">
+        <span class="ins-lbl">${c.lbl}</span>
+        <span class="ins-sub">${c.sub}</span>
+      </div>
+    </div>`
+  ).join('');
+})();
+
+// ═══════════════════════════════════════════════════════
+// LIVE METRICS CARDS
+// ═══════════════════════════════════════════════════════
+const MDEFS=[
+  {k:'tput', label:'Throughput eMBB',fmt:v=>v.toFixed(0), unit:'Mbps'},
+  {k:'lEmbb',label:'Затримка eMBB',  fmt:v=>v.toFixed(1), unit:'мс'},
+  {k:'lUrl', label:'Затримка URLLC', fmt:v=>v.toFixed(2), unit:'мс'},
+  {k:'pl',   label:'Втрата пакетів', fmt:v=>(v*100).toFixed(4), unit:'%'},
+];
+const MLIST=[
+  {k:'base',name:'Без DRL',  color:C_BASE},
+  {k:'drl', name:'DRL (PPO)',color:C_DRL},
+  {k:'gem', name:'Gemini',   color:C_GEM},
+];
+function renderMetrics(t){
+  const ti=Math.min(t,T-1);
+  document.getElementById('metricsRow').innerHTML=MDEFS.map(m=>`
+    <div class="glass mc">
+      <div class="mc-lbl">${m.label}</div>
+      <div class="mc-vals">${MLIST.map(mo=>{
+        const v=D[mo.k].mets[ti].reduce((a,b)=>a+b[m.k],0)/N_BS;
+        return `<div class="mc-row">
+          <span class="mc-name"><span class="dot" style="background:${mo.color}"></span>${mo.name}</span>
+          <span class="mc-val" style="color:${mo.color}">${m.fmt(v)}<span class="mc-unit"> ${m.unit}</span></span>
+        </div>`;
+      }).join('')}</div>
+    </div>`).join('');
+}
+renderMetrics(0);
+
+// ═══════════════════════════════════════════════════════
+// EVENT LOG
+// ═══════════════════════════════════════════════════════
+const logged=new Set();
+function hexA(hex,a){
+  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+function updateEvLog(t){
+  const log=document.getElementById('evLog');
+  for(const e of EVENTS){
+    if(t>=e.t&&!logged.has(e.t)){
+      logged.add(e.t);
+      const el=document.createElement('div');
+      el.className='ev-item';
+      el.innerHTML=`
+        <span class="ev-t">${hhMM(e.t)}</span>
+        <span class="ev-ico" style="background:${hexA(e.col,0.15)};color:${e.col}">${e.icon}</span>
+        <div><div class="ev-name">${e.name}</div>
+        <div class="ev-sub">${e.bs.map(i=>BS_NAMES[i]).join(', ')} &middot; +${(e.boost*100).toFixed(0)}% трафіку &middot; ${e.dur} кр.</div></div>`;
+      log.insertBefore(el,log.firstChild);
+    }
+  }
+  
+}
+
+// ═══════════════════════════════════════════════════════
+// CANVAS MAP
+// ═══════════════════════════════════════════════════════
+const canvas=document.getElementById('netMap');
+const ctx=canvas.getContext('2d');
+
+function resizeCv(){
+  const w=canvas.parentElement.clientWidth;
+  canvas.width=w; canvas.height=Math.round(w*0.52);
+}
+resizeCv();
+window.addEventListener('resize',resizeCv);
+
+// ── UE system helpers ────────────────────────────────
+function fh(n){const x=Math.sin(n*127.1+31.3)*43758.5453;return x-Math.floor(x);}
+
+// Load-aware nearest BS: overloaded BS appears farther → boundary shifts naturally
+function nearestBS(x,y,loads){
+  let minD=Infinity,best=0;
+  for(let i=0;i<N_BS;i++){
+    const bias=loads?1+0.5*loads[i]:1;
+    const d=Math.hypot(x-BS_POS[i][0],y-BS_POS[i][1])*bias;
+    if(d<minD){minD=d;best=i;}
+  }
+  return best;
+}
+
+// Parse BS hex colors to RGB for smooth color interpolation on handover
+const BS_RGB=C_BS.map(h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]);
+
+function lerpBsCol(prevBs,bs,t,alpha){
+  if(prevBs<0||t>=1) return hexA(C_BS[bs],alpha);
+  const a=BS_RGB[prevBs],b=BS_RGB[bs];
+  const r=Math.round(a[0]*(1-t)+b[0]*t);
+  const g=Math.round(a[1]*(1-t)+b[1]*t);
+  const bl=Math.round(a[2]*(1-t)+b[2]*t);
+  return `rgba(${r},${g},${bl},${alpha})`;
+}
+
+// 65 permanent UEs: first 42 are moving, rest stationary
+const UES=Array.from({length:65},(_,i)=>{
+  const bs=i%3, bp=BS_POS[bs], moving=i<42;
+  return {
+    x:Math.max(0.03,Math.min(0.97, bp[0]+(fh(i*7+1)-0.5)*0.72)),
+    y:Math.max(0.06,Math.min(0.94, bp[1]+(fh(i*7+2)-0.5)*0.36)),
+    vx:moving?(fh(i*7+3)-0.5)*0.002:0,
+    vy:moving?(fh(i*7+4)-0.5)*0.002:0,
+    moving, bs, prevBs:-1, colorT:1.0, perm:true,
+  };
+});
+
+// Event UEs: spawned when event starts, faded out after it ends
+const EV_UES=[];
+const spawnedEvs=new Set();
+
+function spawnEvUEs(ei){
+  const e=EVENTS[ei];
+  for(const bi of e.bs){
+    const bp=BS_POS[bi];
+    for(let k=0;k<24;k++){
+      const ang=fh(ei*9000+bi*900+k*11+1)*Math.PI*2;
+      const r=Math.sqrt(fh(ei*9000+bi*900+k*11+2))*0.22;
+      EV_UES.push({
+        x:Math.max(0.03,Math.min(0.97, bp[0]+Math.cos(ang)*r)),
+        y:Math.max(0.06,Math.min(0.94, bp[1]+Math.sin(ang)*r)),
+        vx:(fh(ei*9000+bi*900+k*11+3)-0.5)*0.0022,
+        vy:(fh(ei*9000+bi*900+k*11+4)-0.5)*0.0022,
+        moving:true, bs:bi, prevBs:-1, colorT:1.0,
+        perm:false, evIdx:ei, opacity:0,
+      });
+    }
+  }
+  spawnedEvs.add(ei);
+}
+
+function updateAllUEs(t){
+  const loads=D.drl.loads[Math.min(t,T-1)];
+
+  // spawn event UEs on first frame of each event
+  for(let ei=0;ei<EVENTS.length;ei++){
+    if(t>=EVENTS[ei].t&&!spawnedEvs.has(ei)) spawnEvUEs(ei);
+  }
+
+  // fade event UEs in/out
+  for(let i=EV_UES.length-1;i>=0;i--){
+    const u=EV_UES[i], e=EVENTS[u.evIdx];
+    if(t>=e.t&&t<e.t+e.dur){
+      u.opacity=Math.min(1,u.opacity+0.05);
+    } else {
+      u.opacity-=0.03;
+      if(u.opacity<=0){EV_UES.splice(i,1);continue;}
+    }
+  }
+
+  // update all UE positions and BS assignments
+  for(const u of [...UES,...EV_UES]){
+    if(u.moving){
+      u.x+=u.vx+(Math.random()-0.5)*0.0007;
+      u.y+=u.vy+(Math.random()-0.5)*0.0007;
+      u.x=Math.max(0.02,Math.min(0.98,u.x));
+      u.y=Math.max(0.05,Math.min(0.95,u.y));
+      u.vx=u.vx*0.98+(Math.random()-0.5)*0.0003;
+      u.vy=u.vy*0.98+(Math.random()-0.5)*0.0003;
+      const sp=Math.hypot(u.vx,u.vy);
+      if(sp>0.005){u.vx*=0.005/sp;u.vy*=0.005/sp;}
+    }
+    // reassign BS (with smooth color transition)
+    const nb=nearestBS(u.x,u.y,loads);
+    if(nb!==u.bs){u.prevBs=u.bs;u.bs=nb;u.colorT=0;}
+    if(u.colorT<1) u.colorT=Math.min(1,u.colorT+0.04);
+  }
+}
+
+function rrect(c,x,y,w,h,r){
+  c.beginPath();
+  c.moveTo(x+r,y); c.lineTo(x+w-r,y); c.quadraticCurveTo(x+w,y,x+w,y+r);
+  c.lineTo(x+w,y+h-r); c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  c.lineTo(x+r,y+h); c.quadraticCurveTo(x,y+h,x,y+h-r);
+  c.lineTo(x,y+r); c.quadraticCurveTo(x,y,x+r,y); c.closePath();
+}
+
+function drawMap(t){
+  const W=canvas.width,H=canvas.height;
+  const pad=42,mW=W-2*pad,mH=H-2*pad;
+  const tX=x=>pad+x*mW, tY=y=>pad+y*mH;
+  const CR=mW*0.295;
+
+  ctx.clearRect(0,0,W,H);
+  const ti=Math.min(t,T-1);
+  const loads=D.drl.loads[ti];
+
+  // coverage fills
+  for(let i=0;i<N_BS;i++){
+    const cx=tX(BS_POS[i][0]),cy=tY(BS_POS[i][1]);
+    ctx.beginPath(); ctx.arc(cx,cy,CR*0.92,0,Math.PI*2);
+    ctx.fillStyle=hexA(C_BS[i],loads[i]*0.12); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx,cy,CR,0,Math.PI*2);
+    ctx.strokeStyle=hexA(C_BS[i],0.16); ctx.lineWidth=1; ctx.stroke();
+  }
+
+  // overlap zones
+  for(let i=0;i<N_BS-1;i++){
+    const cx1=tX(BS_POS[i][0]),cy1=tY(BS_POS[i][1]);
+    const cx2=tX(BS_POS[i+1][0]),cy2=tY(BS_POS[i+1][1]);
+    ctx.beginPath(); ctx.arc((cx1+cx2)/2,(cy1+cy2)/2,CR*0.22,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,0.03)'; ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1;
+    ctx.setLineDash([3,6]); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // UE dots — permanent + event
+  updateAllUEs(t);
+  for(const u of UES){
+    ctx.beginPath(); ctx.arc(tX(u.x),tY(u.y),u.moving?2.0:1.5,0,Math.PI*2);
+    ctx.fillStyle=lerpBsCol(u.prevBs,u.bs,u.colorT,u.moving?0.72:0.45);
+    ctx.fill();
+  }
+  for(const u of EV_UES){
+    ctx.beginPath(); ctx.arc(tX(u.x),tY(u.y),2.0,0,Math.PI*2);
+    ctx.fillStyle=lerpBsCol(u.prevBs,u.bs,u.colorT,u.opacity*0.82);
+    ctx.fill();
+  }
+
+  // event rings + event UE dots
+  for(let ei=0;ei<EVENTS.length;ei++){
+    const e=EVENTS[ei];
+    if(t<e.t||t>=e.t+e.dur) continue;
+    const p=(t-e.t)/e.dur, intens=Math.exp(-6*(p-0.35)**2);
+
+    for(const bi of e.bs){
+      const cx=tX(BS_POS[bi][0]),cy=tY(BS_POS[bi][1]);
+      const ringR=CR*0.50; // fixed radius — no pulse
+
+      // ── static ring ───────────────────────────────────
+      ctx.beginPath(); ctx.arc(cx,cy,ringR,0,Math.PI*2);
+      ctx.strokeStyle=hexA(e.col,intens*0.55);
+      ctx.lineWidth=2; ctx.stroke();
+
+      // ── label above ring ──────────────────────────────
+      ctx.font='bold 10px Inter,sans-serif';
+      ctx.fillStyle=hexA(e.col,Math.min(1,intens*1.1));
+      ctx.textAlign='center'; ctx.textBaseline='bottom';
+      ctx.fillText(e.name,cx,cy-ringR-6);
+    }
+  }
+
+  // handover arrows
+  for(let i=0;i<N_BS;i++) for(let j=i+1;j<N_BS;j++){
+    const diff=loads[i]-loads[j];
+    if(Math.abs(diff)<0.13) continue;
+    const [fr,to]=diff>0?[i,j]:[j,i];
+    const x1=tX(BS_POS[fr][0]),y1=tY(BS_POS[fr][1]);
+    const x2=tX(BS_POS[to][0]),y2=tY(BS_POS[to][1]);
+    const dx=x2-x1,dy=y2-y1,dist=Math.hypot(dx,dy);
+    const ux=dx/dist,uy=dy/dist;
+    ctx.save(); ctx.globalAlpha=0.38;
+    ctx.beginPath(); ctx.moveTo(x1+ux*17,y1+uy*17); ctx.lineTo(x2-ux*17,y2-uy*17);
+    ctx.strokeStyle=C_DRL; ctx.lineWidth=1.5;
+    ctx.setLineDash([4,6]); ctx.lineDashOffset=-(t*0.22%10);
+    ctx.stroke(); ctx.setLineDash([]);
+    const ang=Math.atan2(dy,dx), ex=x2-ux*17, ey=y2-uy*17;
+    ctx.beginPath();
+    ctx.moveTo(ex,ey);
+    ctx.lineTo(ex-8*Math.cos(ang-0.4),ey-8*Math.sin(ang-0.4));
+    ctx.lineTo(ex-8*Math.cos(ang+0.4),ey-8*Math.sin(ang+0.4));
+    ctx.closePath(); ctx.fillStyle=C_DRL; ctx.fill();
+    ctx.restore();
+  }
+
+  // BS nodes
+  for(let i=0;i<N_BS;i++){
+    const cx=tX(BS_POS[i][0]),cy=tY(BS_POS[i][1]),l=loads[i];
+    ctx.save();
+    ctx.shadowColor=C_BS[i]; ctx.shadowBlur=10+l*10;
+    ctx.beginPath(); ctx.arc(cx,cy,14,0,Math.PI*2);
+    ctx.fillStyle='rgba(8,8,20,0.90)'; ctx.fill();
+    ctx.strokeStyle=C_BS[i]; ctx.lineWidth=2; ctx.stroke();
+    ctx.restore();
+    ctx.font='bold 9px Inter,sans-serif';
+    ctx.fillStyle=C_BS[i]; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(BS_NAMES[i],cx,cy);
+
+    const bx=cx-25,by=cy+20,bw=50,bh=4;
+    rrect(ctx,bx,by,bw,bh,2); ctx.fillStyle='rgba(255,255,255,0.08)'; ctx.fill();
+    const lc=l>0.85?'#f97171':l>0.65?'#ffbe4d':'#57e87d';
+    rrect(ctx,bx,by,bw*l,bh,2); ctx.fillStyle=lc; ctx.fill();
+    ctx.font='9px Inter,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.48)';
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText((l*100).toFixed(0)+'%',cx,by+7);
+  }
+
+  ctx.font='10px Inter,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.22)';
+  ctx.textAlign='left'; ctx.textBaseline='top';
+  ctx.fillText(hhMM(t)+' · DRL active · t='+t,pad+6,pad+6);
+}
+
+// ═══════════════════════════════════════════════════════
+// SIMULATION LOOP
+// ═══════════════════════════════════════════════════════
+const sim={t:0,running:false,speed:1,acc:0};
+let lastTick=0;
+
+function animLoop(ts){
+  const gap=Math.max(14, sim.running ? 55/Math.max(sim.speed,0.5) : 80);
+  if(ts-lastTick>gap){
+    lastTick=ts;
+    if(sim.running){
+      sim.acc+=sim.speed;
+      while(sim.acc>=1){
+        sim.acc-=1;
+        sim.t=Math.min(sim.t+1,T-1);
+      }
+      document.getElementById('tSlider').value=sim.t;
+      document.getElementById('timeLbl').textContent=hhMM(sim.t);
+      updateClock(sim.t);
+      updateEvLog(sim.t);
+      renderMetrics(sim.t);
+      if(sim.t>=T-1){sim.running=false;document.getElementById('playBtn').innerHTML='&#9654; Старт';}
+    }
+    drawMap(sim.t);
+  }
+  requestAnimationFrame(animLoop);
+}
+// ═══════════════════════════════════════════════════════
+// SPLASH
+// ═══════════════════════════════════════════════════════
+(function buildSplashBg(){
+  const bg = document.getElementById('splashBg');
+  const sizes = [520, 380, 260, 160, 80];
+  sizes.forEach(s => {
+    const d = document.createElement('div');
+    d.className = 'splash-ring';
+    const off = (520 - s) / 2;
+    Object.assign(d.style, {
+      width: s+'px', height: s+'px',
+      left: 'calc(50% - '+s/2+'px)',
+      top:  'calc(50% - '+s/2+'px)',
+      opacity: (0.12 - sizes.indexOf(s)*0.015).toFixed(3),
+    });
+    bg.appendChild(d);
+  });
+})();
+
+function enterSite(){
+  const splash = document.getElementById('splash');
+  splash.classList.add('hidden');
+  setTimeout(() => { splash.style.display = 'none'; }, 650);
+  updateClock(0);
+  requestAnimationFrame(animLoop);
+  drawMap(0);
+}
+
+function togglePlay(){
+  if(sim.t>=T-1){sim.t=0;logged.clear();document.getElementById('evLog').innerHTML='';}
+  sim.running=!sim.running;
+  document.getElementById('playBtn').innerHTML=sim.running?'&#9646;&#9646; Пауза':'&#9654; Старт';
+}
+function setSpeed(s){
+  sim.speed=s;
+  [{v:0.5,id:'sbh'},{v:1,id:'sb1'},{v:3,id:'sb3'},{v:8,id:'sb8'},{v:20,id:'sb20'}].forEach(({v,id})=>{
+    const el=document.getElementById(id);
+    if(el) el.classList.toggle('active',v===s);
+  });
+}
+function seekTo(v){
+  sim.t=v;
+  document.getElementById('timeLbl').textContent=hhMM(v);
+  updateClock(v);
+  drawMap(v); updateEvLog(v); renderMetrics(v);
+}
+function resetSim(){
+  sim.t=0; sim.running=false; logged.clear();
+  document.getElementById('playBtn').innerHTML='&#9654; Старт';
+  document.getElementById('tSlider').value=0;
+  document.getElementById('timeLbl').textContent='00:00';
+  updateClock(0);
+  document.getElementById('evLog').innerHTML='';
+  document.getElementById('evBanner').style.display='none';
+  EV_UES.length=0; spawnedEvs.clear();
+  drawMap(0); renderMetrics(0);
+}
+
+// ═══════════════════════════════════════════════════════
+// ANALYSIS MODAL
+// ═══════════════════════════════════════════════════════
+let _modalOpen = false;
+
+function openAnalysis(){
+  document.getElementById('analysisModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  _modalOpen = true;
+}
+function closeAnalysis(){
+  document.getElementById('analysisModal').classList.remove('open');
+  document.body.style.overflow = '';
+  _modalOpen = false;
+}
+function onOverlayClick(e){
+  if(e.target === document.getElementById('analysisModal')) closeAnalysis();
+}
+function switchTab(id, el){
+  document.querySelectorAll('.modal-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.modal-section').forEach(s=>s.classList.remove('active'));
+  document.getElementById('msec-'+id).classList.add('active');
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'&&_modalOpen) closeAnalysis(); });
+</script>
+</body>
+</html>
